@@ -2,6 +2,14 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Workflow
+
+**Before running `git commit` or `git push`, describe the changes and get explicit confirmation
+first — not after.** Summarize what changed and why, then wait for a go-ahead before committing;
+if already committed, before pushing. Don't treat committing/pushing as an automatic last step of
+a task just because earlier work in the same session was approved — each commit/push needs its
+own confirmation.
+
 ## Repo structure
 
 This is a single monorepo (`origin` → `github.com/edulun/ChatApp`) containing four modules.
