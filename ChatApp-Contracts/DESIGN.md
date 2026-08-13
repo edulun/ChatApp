@@ -109,6 +109,18 @@ Two calls made while generating these that weren't previously decided:
 - Because there's no registry enforcing this automatically yet, compatibility is a review
   discipline, not a tooling guarantee. Revisit if breakages start slipping through.
 
+**Decision: no explicit `schemaVersion` field on domain types, for now** (resolves
+[#13](https://github.com/edulun/ChatApp/issues/13)). The additive-only policy above already
+provides the compatibility guarantee a version field is normally used for — a consumer on an
+older schema just doesn't know about a new field yet, and a `$ref`-ed domain type never has a
+field removed out from under it. Adding a version field now, with no concrete consumer for it
+(no analytics pipeline bucketing by version, no client gate rejecting old servers), would be
+speculative — the same reasoning already applied to dropping `kafka_offset` from
+`messages_by_room` (`ChatApp-Service/DESIGN.md` §4). This isn't a one-way door: adding it later is
+itself just an additive optional field, whenever a real need for it shows up (e.g. long-lived
+clients that can't assume they're always talking to a compatible server, or an actual breaking
+change that needs a discriminator).
+
 ## 6. How each side consumes this
 
 - **`ChatApp-Service` (JVM)**: generate Java types from the JSON Schema / `.proto` files at
@@ -124,7 +136,5 @@ Two calls made while generating these that weren't previously decided:
 
 - Single vs. dual schema format (§3) — leaning dual (JSON Schema for client-facing, Protobuf for
   Kafka) but not committed.
-- Whether domain types need a `version` or `schemaVersion` field baked in now, or whether
-  additive-only evolution makes that unnecessary.
 - Where generated code lands — committed to the repo vs. generated at build time in each
   consuming module.
