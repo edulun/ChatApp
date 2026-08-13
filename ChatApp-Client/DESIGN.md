@@ -106,14 +106,33 @@ ChatApp-Client/
 
 ## 7. Open questions
 
-- Exact Redux slice boundaries above are a first pass — may need adjustment once message
-  pagination + live updates are actually implemented together.
-- Whether RTK Query's cache invalidation is sufficient on its own for keeping room list /
-  membership fresh, or whether WebSocket `room.joined`/`room.left` events need to manually patch
-  the RTK Query cache (likely yes — worth designing once those events exist).
-- No offline/optimistic-send behavior specified yet (e.g. does a sent message show
-  immediately with a `pending` state per `ChatApp-Service/DESIGN.md` §5, or wait for
-  server ack?).
-- Token lifecycle isn't designed yet: does the bearer token expire/need refresh independent of
-  the underlying Redis session TTL (`ChatApp-Service/DESIGN.md` §8), or is it a 1:1 stand-in for
-  the session ID with no separate expiry handling on the client?
+- **Still open** ([#8](https://github.com/edulun/ChatApp/issues/8)): exact Redux slice boundaries
+  above are a first pass. This one genuinely can't be resolved by design decision alone — it
+  needs message pagination and live updates actually implemented together before it's clear
+  whether the boundaries hold up. Revisit then, not now.
+
+- **Decision** (resolves [#9](https://github.com/edulun/ChatApp/issues/9)): `room.joined`/
+  `room.left` **manually patch the RTK Query cache** via `roomsApi.util.updateQueryData`, rather
+  than relying on tag invalidation. Invalidation is a pull model — it marks a cache entry stale
+  and waits for the next subscriber-triggered refetch — which fits REST-driven mutations, not a
+  server-pushed event that already carries the full new membership data. Patching directly with
+  what the event already contains is lower latency (no extra round trip for data already in
+  hand) and simpler than reasoning about when invalidation would actually re-fetch.
+
+- **Decision** (resolves [#10](https://github.com/edulun/ChatApp/issues/10)): **optimistic send
+  with a `pending` state.** On `message.send`, append the message to `messages` immediately using
+  the client-generated `id` (`ChatApp-Service/DESIGN.md` §5) with `status: 'pending'` — don't wait
+  for a round trip. Per `ChatApp-Service/DESIGN.md` §3.1/§5, `message.receive` is fanned out to
+  the sender's own connection too, specifically so it can serve as the send ack: when an inbound
+  `message.receive` arrives whose `message.id` matches a locally-pending entry, transition that
+  entry to `status: 'sent'` in place rather than appending a duplicate. Note what "sent" means
+  here — accepted and fanned out, not durably persisted (`ChatApp-Service/DESIGN.md` §5) — there's
+  currently no event for the rarer later-Cassandra-write-failure case, so a message can't
+  currently transition to `failed` at all. `status` here is local-only client state, consistent
+  with `domain/message.schema.json` deliberately excluding it from the wire contract.
+
+- **Decision** (resolves [#11](https://github.com/edulun/ChatApp/issues/11), see
+  `ChatApp-Service/DESIGN.md` §8 for the full reasoning): the bearer token is a 1:1 stand-in for
+  the Redis session — no separate client-side expiry/refresh logic. A `401` means "treat as
+  signed out," full stop; the client re-runs the Google OAuth flow (§3) rather than attempting
+  any kind of token refresh.
