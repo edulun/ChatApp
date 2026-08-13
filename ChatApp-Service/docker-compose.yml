@@ -1,4 +1,4 @@
-# Local dev dependencies for ChatApp-Service (Postgres, Redis, Kafka).
+# Local dev dependencies for ChatApp-Service (Cassandra, Redis, Kafka).
 # The service itself is expected to run on the host (via ./mvnw spring-boot:run
 # or the IDE), connecting to these over the published ports — it is not a
 # service in this file. Defaults here match src/main/resources/application.yml.
@@ -6,21 +6,35 @@
 # Usage: docker compose up -d
 
 services:
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_DB: chatapp
-      POSTGRES_USER: chatapp
-      POSTGRES_PASSWORD: chatapp
+  cassandra:
+    image: cassandra:5.0
     ports:
-      - "5432:5432"
+      - "9042:9042"
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - cassandra-data:/var/lib/cassandra
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U chatapp -d chatapp"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
+      # cqlsh only succeeds once the node has finished bootstrapping, which
+      # single-node Cassandra can take 30s+ to do — hence the long start_period.
+      test: ["CMD-SHELL", "cqlsh -e 'describe cluster'"]
+      interval: 10s
+      timeout: 10s
+      retries: 15
+      start_period: 60s
+
+  # Cassandra's official image has no equivalent to Postgres's POSTGRES_DB
+  # (auto-create a database on first boot), so this creates the `chatapp`
+  # keyspace once cassandra is healthy, then exits. Keeps `docker compose up -d`
+  # + `./mvnw spring-boot:run` a zero-config local setup, same as before.
+  cassandra-init:
+    image: cassandra:5.0
+    depends_on:
+      cassandra:
+        condition: service_healthy
+    entrypoint: >
+      cqlsh cassandra -e
+      "CREATE KEYSPACE IF NOT EXISTS chatapp WITH replication =
+      {'class': 'SimpleStrategy', 'replication_factor': 1};"
+    restart: "no"
 
   redis:
     image: redis:7-alpine
@@ -56,4 +70,4 @@ services:
       start_period: 20s
 
 volumes:
-  postgres-data:
+  cassandra-data:

@@ -11,7 +11,7 @@ option java_multiple_files = true;
 // The Kafka message key is the room_id string, set by the producer at publish
 // time to preserve per-room ordering — it is not repeated in this value.
 message ChatMessageEvent {
-  string id = 1;          // client-generated at send time; doubles as the Postgres dedup key
+  string id = 1;          // client-generated at send time; doubles as the Cassandra dedup key
   string room_id = 2;
   string sender_id = 3;
   string body = 4;

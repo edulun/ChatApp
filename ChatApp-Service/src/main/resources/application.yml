@@ -4,10 +4,8 @@ spring:
   profiles:
     default: local # no SPRING_PROFILES_ACTIVE needed for local dev; staging/prod always set it explicitly
 
-  jpa:
-    hibernate:
-      ddl-auto: validate
-    open-in-view: false
+  cassandra:
+    schema-action: none # never auto-manage schema outside local (was jpa.ddl-auto=validate's intent)
 
 server:
   port: ${SERVER_PORT:8080}

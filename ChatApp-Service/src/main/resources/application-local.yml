@@ -1,12 +1,16 @@
-# Local dev — matches docker-compose.yml's default credentials/ports exactly.
+# Local dev — matches docker-compose.yml's default ports/keyspace exactly.
 # Every value has a fallback default, so `./mvnw spring-boot:run` works with
-# zero configuration once `docker compose up -d` is running.
+# zero configuration once `docker compose up -d` is running (cassandra-init
+# creates the `chatapp` keyspace itself — see docker-compose.yml).
 
 spring:
-  datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:chatapp}
-    username: ${DB_USERNAME:chatapp}
-    password: ${DB_PASSWORD:chatapp}
+  cassandra:
+    contact-points: ${CASSANDRA_HOST:127.0.0.1} # not "localhost": it resolves to both IPv4 and
+      # IPv6 loopback, and the driver logs a spurious local-DC mismatch warning on the IPv6 one
+    port: ${CASSANDRA_PORT:9042}
+    local-datacenter: ${CASSANDRA_DC:datacenter1} # default DC name for the official single-node image
+    keyspace-name: ${CASSANDRA_KEYSPACE:chatapp}
+    schema-action: create_if_not_exists
 
   data:
     redis:

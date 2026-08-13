@@ -44,15 +44,15 @@ flowchart LR
     end
 
     K[(Kafka<br/>message events)]
-    PG[(PostgreSQL<br/>durable store)]
+    CASS[(Cassandra<br/>durable store)]
     R[(Redis<br/>presence + typing + session routing)]
 
     C <-->|WebSocket| WS
     C -->|REST| API
     WS -->|produce| K
-    K -->|consume| PG
+    K -->|consume| CASS
     WS <-->|read/write| R
-    API --> PG
+    API --> CASS
 ```
 
 ## 5. Tech stack
@@ -61,7 +61,7 @@ flowchart LR
 |---|---|
 | Service framework | Spring Boot |
 | Real-time transport | WebSockets |
-| Durable storage | PostgreSQL |
+| Durable storage | Cassandra |
 | Message queue | Kafka — decouples the WebSocket write path from the DB write path |
 | Presence / ephemeral state | Redis |
 | Contracts | Shared module (`ChatApp-Contracts`) — format TBD (Java DTOs vs. schema-driven) |
@@ -72,16 +72,16 @@ flowchart LR
 2. The service validates the sender's membership in the target room/conversation.
 3. The service publishes a message event to Kafka (keyed by room/conversation ID, to preserve
    per-room ordering).
-4. A Kafka consumer within (or alongside) the service persists the message to PostgreSQL.
+4. A Kafka consumer within (or alongside) the service persists the message to Cassandra.
 5. The service fans the message out to other connected members of the room in real time,
-   independent of the Kafka → Postgres write completing (delivery is not gated on durability,
+   independent of the Kafka → Cassandra write completing (delivery is not gated on durability,
    but durability is guaranteed via the queue — see open question in §8).
 6. Redis is consulted to know which members are online/which service instance holds their
    WebSocket connection, for routing delivery in a multi-instance deployment.
 
 ## 7. Presence & typing
 
-Presence and typing state are ephemeral and live in Redis rather than Postgres:
+Presence and typing state are ephemeral and live in Redis rather than Cassandra:
 - A heartbeat/TTL key per connected user tracks online status.
 - Typing indicators are short-lived pub/sub events, not persisted.
 

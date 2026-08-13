@@ -36,12 +36,12 @@ section that reflects real undecided points, not resolved ones. Root: `DESIGN.md
 
 ### `ChatApp-Service` (Spring Boot, Java 21, Maven)
 
-Local infra dependencies (Postgres, Redis, Kafka) run in Docker; the service itself runs on the
+Local infra dependencies (Cassandra, Redis, Kafka) run in Docker; the service itself runs on the
 host against them:
 
 ```
 cd ChatApp-Service
-docker compose up -d          # starts postgres, redis, kafka — one-time / as-needed
+docker compose up -d          # starts cassandra (+ a one-shot keyspace-init), redis, kafka
 ./mvnw spring-boot:run         # runs the service (mvnw.cmd on Windows cmd/PowerShell)
 ```
 
@@ -77,9 +77,9 @@ time — schemas here are never hand-copied into either consuming module.
 ### End-to-end message flow
 
 ```
-Client --WS--> Service --produce--> Kafka(topic: chat.messages, key: room_id) --consume--> Postgres
+Client --WS--> Service --produce--> Kafka(topic: chat.messages, key: room_id) --consume--> Cassandra
                   |
-                  +--fan-out (real-time delivery to other room members, NOT gated on the Kafka/Postgres write)--> Client(s)
+                  +--fan-out (real-time delivery to other room members, NOT gated on the Kafka/Cassandra write)--> Client(s)
 ```
 
 - Kafka decouples the WebSocket write path from the DB write path; delivery to other connected
@@ -87,6 +87,16 @@ Client --WS--> Service --produce--> Kafka(topic: chat.messages, key: room_id) --
 - Kafka messages are keyed by `room_id` so per-room ordering is preserved without needing global
   ordering.
 - Each message carries a client-generated ID used for both Kafka dedup and safe retry of sends.
+
+### Data model (Cassandra)
+
+No joins, so it's **one denormalized table per query pattern**, not a normalized relational
+schema — e.g. `room_members_by_room` (list/check a room's members) and `rooms_by_user` (list a
+user's rooms) are two tables for the same underlying membership fact, kept in sync at the
+application level rather than via a join. `messages_by_room` partitions by `room_id` and clusters
+by `(created_at DESC, id)`, which maps directly onto the `before=`/`after=` REST pagination
+(`ChatApp-Service/DESIGN.md` §3.2) as a clustering-key range scan. Full table list and rationale:
+`ChatApp-Service/DESIGN.md` §4.
 
 ### Presence, typing, and multi-instance routing (Redis)
 
@@ -148,7 +158,7 @@ Each module has its own project subagent, defined in that module's `.claude/agen
 | Subagent | Module | Scope |
 |---|---|---|
 | `client-dev` | `ChatApp-Client` | Implements client features. Never hand-writes DTOs; auth is a bearer token the client attaches itself, not a cookie. |
-| `service-dev` | `ChatApp-Service` | Implements service features. Fan-out isn't gated on Kafka/Postgres durability; sessions are Redis-backed opaque tokens, not JWTs. |
+| `service-dev` | `ChatApp-Service` | Implements service features. Fan-out isn't gated on Kafka/Cassandra durability; sessions are Redis-backed opaque tokens, not JWTs; data model is one denormalized table per query, not relational. |
 | `schema-reviewer` | `ChatApp-Contracts` | Read-only. Reviews schema diffs against the additive-only compatibility policy (§5 of that module's `DESIGN.md`) before merge. |
 
 Each is scoped to its own module's conventions and explicitly told not to reach across module

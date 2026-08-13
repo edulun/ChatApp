@@ -26,7 +26,7 @@ Per the earlier scope decision, four things:
    [`ChatApp-Service/DESIGN.md` §3.1](../ChatApp-Service/DESIGN.md#31-websocket)
    (`auth`, `message.send`, `typing.start`, `presence.update`, ...).
 4. **Kafka event schemas** — the `chat.messages` event that flows from the WebSocket write path
-   into Postgres ([`ChatApp-Service/DESIGN.md` §5](../ChatApp-Service/DESIGN.md#5-message-write-path)).
+   into Cassandra ([`ChatApp-Service/DESIGN.md` §5](../ChatApp-Service/DESIGN.md#5-message-write-path)).
 
 ## 3. Format — recommendation
 

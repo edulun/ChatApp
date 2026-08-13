@@ -15,15 +15,15 @@ follow, and should be updated as decisions firm up or change.
 - Real-time message routing between connected clients
 - Room/conversation membership
 - Presence and typing indicator state
-- Durable message persistence (via Kafka → PostgreSQL)
+- Durable message persistence (via Kafka → Cassandra)
 - REST API for everything that isn't real-time (history, room management, auth)
 
 ## 2. Tech stack
 
 - **Framework**: Spring Boot
 - **Transport**: WebSockets (real-time), REST (everything else)
-- **Durable store**: PostgreSQL
-- **Queue**: Kafka, sitting between the WebSocket write path and PostgreSQL
+- **Durable store**: Cassandra
+- **Queue**: Kafka, sitting between the WebSocket write path and Cassandra
 - **Ephemeral store**: Redis, for presence, typing indicators, and (if multi-instance) session
   routing
 
@@ -61,43 +61,80 @@ client-driven via REST.
 | `GET /rooms/{id}/messages?after=&limit=` | Catch-up after reconnect (see §3.1) |
 | `POST /rooms/{id}/members` | Add a member to a group chat |
 
-## 4. Data model (PostgreSQL)
+## 4. Data model (Cassandra)
 
-Indicative schema — not final:
+Indicative schema — not final. Cassandra has no joins and no secondary lookups beyond a table's
+own partition/clustering keys, so the model is **one denormalized table per query pattern**
+rather than a normalized relational schema:
 
 ```
-users            (id, username, ...)
-rooms            (id, type [direct|group], name, created_at)
-room_members     (room_id, user_id, joined_at, role)
-messages         (id, room_id, sender_id, body, created_at)
+users_by_id                  (id, display_name, created_at)
+                              PK: id
+
+user_identities_by_provider  (provider, provider_user_id, user_id, email, created_at)
+                              PK: (provider, provider_user_id)
+                              -- auth lookup: given Google's `sub`, find the user
+
+rooms_by_id                  (id, type, name, created_at)
+                              PK: id
+
+room_members_by_room         (room_id, user_id, joined_at, role)
+                              PK: room_id, CLUSTERING: user_id
+                              -- "list/check members of a room" (message-send membership check, §5)
+
+rooms_by_user                (user_id, room_id, joined_at, role)
+                              PK: user_id, CLUSTERING: room_id
+                              -- "list the current user's rooms" (GET /rooms) — a denormalized
+                              -- copy of the same membership fact as room_members_by_room, since
+                              -- Cassandra can't serve both access patterns from one table
+
+messages_by_room             (room_id, created_at, id, sender_id, body)
+                              PK: room_id, CLUSTERING: (created_at DESC, id)
+                              -- id is still the client-generated dedup key from §5; created_at
+                              -- (server-assigned) is the clustering column so before=/after=
+                              -- pagination (§3.2) is a plain clustering-key range scan
 ```
 
 Notes:
-- `rooms.type = direct` covers 1:1 DMs as a degenerate 2-member room, rather than modeling DMs
-  separately — avoids duplicating room/membership logic. Revisit if DM-specific behavior
-  diverges enough to justify a split.
-- `messages` is append-only. Edits/deletes are out of v1 scope (see root doc §9) but if added
-  later, prefer soft-delete/tombstone events over mutation, to keep the Kafka log and DB in
-  agreement.
-- No `kafka_offset` column: the original idea was to let a stored row be correlated back to a
-  Kafka seek point for replay/debugging. Dropped because dedup is already solved by the
-  client-generated message ID (§5), Kafka's own consumer-group offsets already give
-  replay-from-position independent of anything in Postgres, and there's no second consumer of
-  `chat.messages` planned that would need this correlation. Can be added later, additively, if
-  a concrete need shows up.
+- This access pattern — append-mostly writes partitioned by room, read back as an ordered range
+  scan over one partition — is close to Cassandra's ideal shape, more so than it was for
+  PostgreSQL: no cross-room joins are ever needed, and per-room write/read load spreads naturally
+  across partitions as room count grows.
+- `rooms_by_id.type = direct` still covers 1:1 DMs as a degenerate 2-member room rather than a
+  separate type (see original rationale — unchanged by the storage switch).
+- `messages_by_room` is append-only. Edits/deletes are out of v1 scope (see root doc §9) but if
+  added later, prefer a tombstone/soft-delete write over a Cassandra `UPDATE`/`DELETE` against
+  historical rows, to keep the Kafka log and the table in agreement and avoid tombstone-heavy
+  reads.
+- No `kafka_offset` column: dedup is already solved by the client-generated message `id` (§5),
+  Kafka's own consumer-group offsets already give replay-from-position independent of anything in
+  Cassandra, and there's no second consumer of `chat.messages` planned that would need this
+  correlation. Can be added later, additively, if a concrete need shows up.
+- **Open**: `room_members_by_room` and `rooms_by_user` duplicate the same membership fact for two
+  different query shapes, and Cassandra has no cross-table transaction to keep a join/leave
+  atomic across both — a logged `BATCH` gets atomicity of application (both writes eventually
+  land) but not isolation. Acceptable for v1 given membership changes are infrequent relative to
+  messages, but worth flagging as a real consistency seam introduced by this schema, unlike the
+  single-table PostgreSQL version.
+- **Open**: local dev runs a single node at `replication_factor: 1` (docker-compose). Staging/prod
+  replication factor and consistency levels (e.g. `LOCAL_QUORUM` for reads/writes) aren't decided
+  yet — that's a real availability/consistency trade-off to make before a multi-node deployment,
+  not just a config value to fill in.
 
 ## 5. Message write path
 
 ```
-Client --WS--> Service --produce--> Kafka(topic: chat.messages, key: room_id) --consume--> Postgres
+Client --WS--> Service --produce--> Kafka(topic: chat.messages, key: room_id) --consume--> Cassandra
                   |
                   +--fan-out (real-time delivery to other room members)--> Client(s)
 ```
 
 - **Partitioning**: keyed by `room_id` so all messages in a room are consumed in order by a
-  single partition/consumer, preserving per-room ordering without requiring global ordering.
+  single partition/consumer, preserving per-room ordering without requiring global ordering —
+  matches `messages_by_room`'s own partitioning (§4), so a room's Kafka ordering and its stored
+  ordering agree.
 - **Fan-out vs. persistence are decoupled**: real-time delivery to other connected clients does
-  not wait on the Kafka → Postgres write. This keeps latency low but means a message can be
+  not wait on the Kafka → Cassandra write. This keeps latency low but means a message can be
   delivered before it's durable. Acceptable for chat UX, but flag to the client via a
   `pending`/`sent`/`failed` status if the write later fails, so the UI doesn't lie about
   durability.
@@ -132,7 +169,7 @@ Client --WS--> Service --produce--> Kafka(topic: chat.messages, key: room_id) --
 
 ## 7. Group chats vs. direct messages
 
-Modeled uniformly as `rooms` (see §4). Group-specific concerns:
+Modeled uniformly as `rooms_by_id` (see §4). Group-specific concerns:
 - Membership changes (add/remove) need their own audit trail if that becomes a requirement —
   not in v1.
 - No admin/moderation roles specified yet — open question if group chats need them for v1.
@@ -143,24 +180,25 @@ Modeled uniformly as `rooms` (see §4). Group-specific concerns:
 account creation initially — every user is provisioned from a Google identity on first login.
 
 **Future**: add native account creation (email/password or similar) as a second path. Design the
-`users` table now so it doesn't assume Google is the only identity source later:
+identity model now so it doesn't assume Google is the only source later — per §4:
 
 ```
-users            (id, display_name, created_at, ...)
-user_identities  (id, user_id, provider [google|local], provider_user_id, email, created_at)
+users_by_id                  (id, display_name, created_at, ...)
+user_identities_by_provider  (provider, provider_user_id, user_id, email, created_at)
 ```
 
-`provider_user_id` is Google's `sub` claim for `provider = google`. Keeping identity as a
-separate table from `users` means adding `provider = local` later (password-based) is an
-additive change, not a migration of existing rows.
+`provider_user_id` is Google's `sub` claim for `provider = google`, and `(provider,
+provider_user_id)` is the table's partition key — the exact lookup auth needs. Keeping identity as
+a separate table from `users_by_id` means adding `provider = local` later (password-based) is an
+additive new table, not a migration of existing rows.
 
 **Flow (v1)**:
 1. Client performs the Google OAuth/OIDC flow (authorization code, PKCE) and obtains an ID
    token from Google.
 2. Client sends that ID token to the service (e.g. `POST /auth/google`).
 3. Service verifies the token against Google's public keys, looks up or creates the
-   `user_identities` row (+ `users` row on first login), and issues its own session credential
-   (session token/JWT) back to the client.
+   `user_identities_by_provider` row (+ `users_by_id` row on first login, per §4), and issues its
+   own session credential (session token/JWT) back to the client.
 4. That service-issued credential — not the Google token — is what's used for both the REST API
    and the WebSocket handshake. Delivered as a **bearer token in the `/auth/google` response
    body** (per [`ChatApp-Client/DESIGN.md` §3](../ChatApp-Client/DESIGN.md#3-auth-flow-google-oauth)),
@@ -228,3 +266,7 @@ open registration.
 - Session TTL duration and whether "sign out everywhere" is needed for v1 (§8)
 - Whether the WebSocket handshake re-validates the session credential periodically on long-lived
   connections, or only at connect time (§8)
+- Keeping `room_members_by_room` and `rooms_by_user` consistent across a join/leave without a
+  cross-table transaction (§4)
+- Replication factor and read/write consistency levels for a real (non-single-node) Cassandra
+  deployment (§4)

@@ -1,5 +1,5 @@
 # Production — same shape as application-staging.yml, and for the same
-# reason: no spring.datasource / data.redis / kafka properties defined here,
+# reason: no spring.cassandra / data.redis / kafka properties defined here,
 # relying entirely on Spring Boot's standard relaxed-binding env vars so a
 # missing one fails startup cleanly instead of resolving to a literal
 # "${VAR}" string. See application-staging.yml for the required env var list

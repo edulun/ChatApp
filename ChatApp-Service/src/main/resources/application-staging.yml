@@ -1,16 +1,17 @@
-# Staging — deliberately defines no spring.datasource / data.redis / kafka
-# properties here. Composing a URL from ${DB_HOST}/${DB_PORT}/${DB_NAME}
+# Staging — deliberately defines no spring.cassandra / data.redis / kafka
+# properties here. Composing values from ${CASSANDRA_HOST}/${CASSANDRA_PORT}/...
 # pieces (as application-local.yml does) turned out NOT to fail fast when a
-# piece is missing: Spring leaves the literal "${DB_HOST}" text in the
-# string, and it only blows up later as a confusing UnknownHostException at
-# connection time. Relying entirely on Spring Boot's standard relaxed-binding
-# env vars below gets a real, clear startup failure instead
-# ("Failed to configure a DataSource: 'url' attribute is not specified...").
+# piece is missing: Spring leaves the literal "${CASSANDRA_HOST}" text in the
+# string, and it only blows up later as a confusing connection error. Relying
+# entirely on Spring Boot's standard relaxed-binding env vars below gets a
+# real, clear startup failure instead ("Failed to load balance request, no
+# node was available" / a clear missing-property error, rather than a bad
+# literal host).
 #
 # Required env vars (set by the deployment platform, no defaults):
-#   SPRING_DATASOURCE_URL       e.g. jdbc:postgresql://host:5432/chatapp
-#   SPRING_DATASOURCE_USERNAME
-#   SPRING_DATASOURCE_PASSWORD
+#   SPRING_CASSANDRA_CONTACT_POINTS    e.g. cassandra-1.internal:9042
+#   SPRING_CASSANDRA_LOCAL_DATACENTER
+#   SPRING_CASSANDRA_KEYSPACE_NAME
 #   SPRING_DATA_REDIS_HOST
 #   SPRING_DATA_REDIS_PORT
 #   SPRING_KAFKA_BOOTSTRAP_SERVERS

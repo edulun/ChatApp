@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Message",
-  "description": "A persisted chat message, mirroring the messages table exactly. The id is client-generated at send time and doubles as the dedup key through Kafka and into Postgres — see ChatApp-Service/DESIGN.md §5. Client-side delivery status (pending/sent/failed) is intentionally not part of this shape; it's local UI state on the client, not a wire contract.",
+  "description": "A persisted chat message, mirroring the messages_by_room table exactly. The id is client-generated at send time and doubles as the dedup key through Kafka and into Cassandra — see ChatApp-Service/DESIGN.md §5. Client-side delivery status (pending/sent/failed) is intentionally not part of this shape; it's local UI state on the client, not a wire contract.",
   "type": "object",
   "properties": {
     "id": { "type": "string", "format": "uuid" },

@@ -28,7 +28,7 @@ module-specific detail.
 | Service framework | Spring Boot (Java 21) |
 | Client | React + TypeScript + Vite |
 | Real-time transport | WebSockets |
-| Durable storage | PostgreSQL |
+| Durable storage | Cassandra |
 | Message queue | Kafka |
 | Presence / ephemeral state | Redis |
 | Contracts | JSON Schema (REST/WebSocket) + Protobuf (Kafka) |
@@ -39,7 +39,7 @@ module-specific detail.
 
 ```
 cd ChatApp-Service
-docker compose up -d      # local Postgres, Redis, Kafka
+docker compose up -d      # local Cassandra, Redis, Kafka
 ./mvnw spring-boot:run
 ```
 
