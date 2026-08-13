@@ -5,7 +5,8 @@ See the [root system design](../DESIGN.md) for how this module fits with `ChatAp
 
 ## Status
 
-Design phase. No schemas exist yet — this document is the outline to implement against.
+Schemas exist and are real (see §4's implemented layout). No codegen is wired up yet on either
+consuming side (§6).
 
 ## 1. Purpose
 
@@ -38,10 +39,13 @@ should probably use different tools rather than forcing one format everywhere:
 | REST + WebSocket | Client (non-JVM) + Service | **JSON Schema** | Wire format is JSON either way; JSON Schema documents/validates that shape without imposing binary codegen tooling on a web/mobile client. Every mainstream client stack consumes JSON natively. |
 | Kafka (`chat.messages`) | Service-internal only (producer and consumer are both `ChatApp-Service`) | **Protobuf** | Never touched by the client, so binary efficiency and Protobuf's built-in field-numbering rules (which map directly onto the additive-only policy in §5) are pure upside with no client-tooling cost. |
 
-**Open question**: is running two schema formats worth the consistency cost, or should
-everything just be JSON Schema (including Kafka) until there's a concrete reason to optimize the
-internal path? Default to JSON Schema everywhere if the team would rather keep one toolchain,
-and revisit Protobuf for Kafka only if message volume makes it worth it.
+**Decision: dual format, as above** (resolves [#12](https://github.com/edulun/ChatApp/issues/12)).
+This is really just formalizing what's already implemented — `kafka/chat-messages.proto` exists as
+Protobuf, everything else as JSON Schema (§4) — rather than a new choice. The consistency cost of
+two toolchains is real but bounded: Kafka's schema is producer/consumer-both-`ChatApp-Service`
+internal, so it never needs to be consumed by non-JVM tooling the way REST/WebSocket do, which is
+exactly the asymmetry the table above is built on. Revisit only if that asymmetry stops being
+true — e.g. a second, non-JVM consumer of `chat.messages` ever gets added.
 
 ## 4. Layout (implemented)
 
@@ -132,9 +136,18 @@ change that needs a discriminator).
 - Either way, the schema files in this module are the build input on both sides — nobody
   hand-maintains a parallel copy of the shape.
 
+**Decision: generated at build time, not committed** (resolves
+[#14](https://github.com/edulun/ChatApp/issues/14)). Both bullets above already implied this —
+`ChatApp-Client`'s `generated/` directory is described as "never hand-edited" build output
+(`ChatApp-Client/DESIGN.md` §6), and this section already said Java types generate "at build
+time" — this just makes it the explicit, stated decision instead of an implication. Once codegen
+is actually wired up, `ChatApp-Client/.gitignore` and `ChatApp-Service`'s build output should
+exclude the generated paths, the same way `target/` already is for Maven output. Chosen over
+committing generated code because there's nothing to review in a diff that isn't already fully
+determined by the schema files themselves — a generated-code commit would just be noise riding
+along the real (schema) change.
+
 ## 7. Open questions
 
-- Single vs. dual schema format (§3) — leaning dual (JSON Schema for client-facing, Protobuf for
-  Kafka) but not committed.
-- Where generated code lands — committed to the repo vs. generated at build time in each
-  consuming module.
+None as of this writing — §3's format question and this section's generated-code-location
+question are now Decision notes above. Add new items here as they come up.
