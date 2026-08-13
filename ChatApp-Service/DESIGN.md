@@ -38,7 +38,7 @@ One connection per authenticated client. Proposed message envelope (concrete sch
 |---|---|---|
 | `auth` | client → server | Must be the first frame after connect; carries the bearer token (§8). Connection is held unauthenticated — no other message type accepted — until this validates. |
 | `message.send` | client → server | Send a message to a room/conversation |
-| `message.receive` | server → client | Deliver a message from another participant |
+| `message.receive` | server → client | Deliver a message to every live connection for that room, including the sender's own (other tabs/devices, and the sending connection itself) — doubles as the sender's own send ack, see §5 |
 | `typing.start` / `typing.stop` | client → server | Signal typing state |
 | `typing.update` | server → client | Broadcast a peer's typing state |
 | `presence.update` | server → client | A contact's online/offline status changed |
@@ -116,16 +116,27 @@ Notes:
   Kafka's own consumer-group offsets already give replay-from-position independent of anything in
   Cassandra, and there's no second consumer of `chat.messages` planned that would need this
   correlation. Can be added later, additively, if a concrete need shows up.
-- **Open**: `room_members_by_room` and `rooms_by_user` duplicate the same membership fact for two
-  different query shapes, and Cassandra has no cross-table transaction to keep a join/leave
-  atomic across both — a logged `BATCH` gets atomicity of application (both writes eventually
-  land) but not isolation. Acceptable for v1 given membership changes are infrequent relative to
-  messages, but worth flagging as a real consistency seam introduced by this schema, unlike the
-  single-table PostgreSQL version.
-- **Open**: local dev runs a single node at `replication_factor: 1` (docker-compose). Staging/prod
-  replication factor and consistency levels (e.g. `LOCAL_QUORUM` for reads/writes) aren't decided
-  yet — that's a real availability/consistency trade-off to make before a multi-node deployment,
-  not just a config value to fill in.
+- **Decision: accept the dual-write risk for v1** (resolves
+  [#2](https://github.com/edulun/ChatApp/issues/2)). `room_members_by_room` and `rooms_by_user`
+  duplicate the same membership fact for two different query shapes, and Cassandra has no
+  cross-table transaction to keep a join/leave atomic across both. Write both inside a single
+  logged `BATCH` — that gets atomicity of application (both writes eventually land, or the
+  coordinator retries) but not isolation, so a reader can briefly see one table updated and not
+  the other. Accepted for v1: membership changes are infrequent relative to messages, and a
+  transient one-table-stale read (e.g. a `GET /rooms` that's a moment behind an in-flight join)
+  is a low-consequence UI staleness, not a correctness bug. Revisit with a reconciliation job (or
+  a rewrite onto a single source of truth for membership) only if drift between the two tables is
+  actually observed, not preemptively.
+- **Decision: `RF=3` with `LOCAL_QUORUM` reads/writes for any real (multi-node) deployment**
+  (resolves [#3](https://github.com/edulun/ChatApp/issues/3)). This is the standard
+  Cassandra-recommended default, not a number specific to this app's traffic: `RF=3` +
+  `LOCAL_QUORUM` tolerates one node down per DC without losing availability or consistency
+  (quorum of 3 is 2, survives 1 failure), and is the well-trodden starting point every Cassandra
+  deployment guide converges on absent a specific reason to deviate. Local dev stays `RF=1`
+  (single node — `LOCAL_QUORUM` there is equivalent to `ONE`, matching `docker-compose.yml`
+  already). This is a placeholder-until-real-topology-exists decision, not a final answer: actual
+  node count, DC layout, and read/write latency requirements aren't known yet since no real
+  deployment target is chosen — revisit once one is.
 
 ## 5. Message write path
 
@@ -139,13 +150,29 @@ Client --WS--> Service --produce--> Kafka(topic: chat.messages, key: room_id) --
   single partition/consumer, preserving per-room ordering without requiring global ordering —
   matches `messages_by_room`'s own partitioning (§4), so a room's Kafka ordering and its stored
   ordering agree.
-- **Fan-out vs. persistence are decoupled**: real-time delivery to other connected clients does
-  not wait on the Kafka → Cassandra write. This keeps latency low but means a message can be
-  delivered before it's durable. Acceptable for chat UX, but flag to the client via a
-  `pending`/`sent`/`failed` status if the write later fails, so the UI doesn't lie about
-  durability.
+- **Fan-out vs. persistence are decoupled**: real-time delivery — to every live connection for
+  the room, sender included (§3.1) — does not wait on the Kafka → Cassandra write. This keeps
+  latency low but means a message can be delivered before it's durable. `message.receive`
+  reaching the sender is what the client treats as "sent" (`ChatApp-Client/DESIGN.md` §7); note
+  that's "accepted and fanned out," not "durably persisted" — there's no `message.failed`-style
+  event yet for the rarer case where the later Cassandra write actually fails, so that failure
+  mode isn't currently surfaced to the client at all. Deferred rather than solved: Kafka's own
+  durability/retry behavior makes a genuine permanent write failure rare enough that this gap is
+  acceptable for v1, but it's a real gap, not a resolved one — revisit if it's ever observed in
+  practice.
 - **Dedup**: each message gets a client-generated ID (e.g. UUID) at send time, used both for
   Kafka dedup and so retried sends don't create duplicates.
+
+**Decision: at-least-once delivery, not exactly-once** (resolves
+[#1](https://github.com/edulun/ChatApp/issues/1)). Per-room ordering is already guaranteed by the
+`room_id`-keyed partitioning above; what's left open is duplicate delivery under retry/failure,
+and at-least-once + client-side dedup by message `id` (already designed in) is enough — a
+duplicate `message.send` retry produces the same `id`, so both `messages_by_room`'s primary key
+and the client's own rendering can drop the repeat. Exactly-once would mean Kafka transactions
+end-to-end (producer + the Cassandra-writing consumer), which is real added complexity with no
+concrete v1 requirement driving it — chat UX tolerates an occasional client-visible duplicate far
+better than it tolerates added write latency. Revisit only if a real duplicate-message bug
+surfaces that dedup-by-id doesn't actually catch.
 
 ## 6. Presence & typing (Redis)
 
@@ -176,9 +203,17 @@ Client --WS--> Service --produce--> Kafka(topic: chat.messages, key: room_id) --
 ## 7. Group chats vs. direct messages
 
 Modeled uniformly as `rooms_by_id` (see §4). Group-specific concerns:
-- Membership changes (add/remove) need their own audit trail if that becomes a requirement —
-  not in v1.
-- No admin/moderation roles specified yet — open question if group chats need them for v1.
+
+**Decision: no admin/moderation roles, no membership audit trail, for v1** (resolves
+[#4](https://github.com/edulun/ChatApp/issues/4)). `room_members_by_room`/`rooms_by_user` already
+carry a `role` column (§4), but nothing reads or enforces it yet — any member can add/remove
+members for v1, there's no distinct "owner"/"admin" behavior, and add/remove events aren't
+logged anywhere beyond the current membership state. Same reasoning as dropping `kafka_offset`
+(§4) and not adding a `schemaVersion` field (`ChatApp-Contracts/DESIGN.md` §5): no concrete
+requirement driving either yet, and both are additive to bring in later — moderation roles as new
+enforcement logic reading the existing `role` column, an audit trail as a new table fed by the
+same join/leave write path. Revisit once an actual moderation/abuse scenario in a real group
+chat makes the gap concrete rather than hypothetical.
 
 ## 8. Auth
 
@@ -234,12 +269,38 @@ additive new table, not a migration of existing rows.
   its own deny-list machinery — i.e. the JWT's usual advantage (no storage lookup) isn't worth
   much here since a lookup is already unavoidable per request.
 
-**Remaining open questions**:
-- Exact TTL duration (product decision, not architectural).
-- Whether "sign out everywhere" is a v1 requirement (determines if `user_sessions:{user_id}` is
-  needed now or can be added later).
-- Whether the WebSocket handshake re-validates the credential per-connection only, or also
-  periodically for long-lived connections.
+**Decision: 30-day sliding TTL, refreshed once under half its remaining value; no "sign out
+everywhere" for v1** (resolves [#5](https://github.com/edulun/ChatApp/issues/5)). 30 days matches
+ordinary "stay signed in" expectations for a chat app (not a banking-app-style short session), and
+the refresh-under-50%-remaining threshold was already the sliding-window mechanism designed above
+— this just picks the number. `user_sessions:{user_id}` (the secondary index "sign out
+everywhere" needs) isn't built for v1: nothing in v1 scope (no admin/moderation per §7, no
+credential-compromise flow) currently needs to force-revoke a session other than the one being
+used, so there's no consumer for it yet. Purely additive to add later — a new secondary index
+alongside the existing `session:{session_id}` keys, not a migration of them. These are product
+defaults, not derived from any load/security analysis — revisit if real usage suggests otherwise.
+
+**Decision: connect-time-only validation, not periodic re-validation** (resolves
+[#6](https://github.com/edulun/ChatApp/issues/6)). The `auth` frame (§3.1) validates once, when
+the WebSocket connects; a revoked session doesn't force-close an already-open connection before
+its next reconnect. Acceptable because: `DEL session:{session_id}` (this section) already blocks
+all *new* activity — REST calls fail immediately, and a fresh WebSocket connect fails at the
+`auth` frame — so the exposure window is "how long can an already-open connection outlive a
+revocation," not "can revocation be bypassed entirely." And since "sign out everywhere" isn't v1
+(above), the only realistic revocation path for now is the user's own logout on the same
+device/tab, where the WebSocket naturally closes anyway. Revisit if "sign out everywhere" or a
+compromise-response flow becomes real — that's exactly the scenario where an attacker's still-open
+connection outliving revocation actually matters.
+
+**Decision: the bearer token is a 1:1 stand-in for the session ID, no separate client-side
+expiry/refresh** (resolves [#11](https://github.com/edulun/ChatApp/issues/11)). The token *is*
+the `session_id` (already stated above — "no encoded claims"), so it has no independent lifecycle
+to manage: it's valid exactly as long as the Redis session is, and the client doesn't need to
+reason about token expiry as a concept distinct from "the session expired." On a `401` (session
+missing/expired in Redis), the client simply treats it as signed-out and re-runs the Google OAuth
+flow (`ChatApp-Client/DESIGN.md` §3) to get a new one — there's no refresh-token exchange to
+build. Simpler than independent token expiry, and consistent with choosing an opaque Redis-backed
+session over a self-contained JWT in the first place (this section, above).
 
 ## 9. Rate limiting & abuse prevention (recommendation)
 
@@ -266,13 +327,26 @@ blocking/reporting and signup-side throttling are longer-term and out of scope p
 doc's non-goals; Google OAuth as the only signup path already raises the bar somewhat versus
 open registration.
 
+**Decision: starting thresholds for (1)–(3)** (resolves
+[#7](https://github.com/edulun/ChatApp/issues/7)), picked as reasonable chat-app defaults rather
+than derived from any real traffic data — the point is to have *a* number in place, not the
+*right* number, since there's none of the latter without production traffic to look at:
+
+1. **Per-user `message.send`**: 10 messages / 10s (token bucket), refilling continuously —
+   generous for real typing/sending speed, well below flood-bot territory.
+2. **REST**: 60 requests/min per authenticated user on reads; 20/min on writes (`POST /rooms`,
+   `POST /rooms/{id}/members`); 10/min per IP on the pre-auth `POST /auth/google`.
+3. **Message size cap**: 8 KiB per `message.send` body — comfortably above any real chat message,
+   cheap to check before it reaches Kafka.
+
+Every number here is explicitly a starting default, not a tuned one — revisit once real usage
+data exists rather than trying to guess right the first time.
+
 ## 10. Open questions (service-specific)
 
-- Exact rate-limit thresholds in §9 — the layers are proposed, the numbers aren't.
-- Session TTL duration and whether "sign out everywhere" is needed for v1 (§8)
-- Whether the WebSocket handshake re-validates the session credential periodically on long-lived
-  connections, or only at connect time (§8)
-- Keeping `room_members_by_room` and `rooms_by_user` consistent across a join/leave without a
-  cross-table transaction (§4)
-- Replication factor and read/write consistency levels for a real (non-single-node) Cassandra
-  deployment (§4)
+None as of this writing — the items formerly here (rate-limit thresholds, session TTL/"sign out
+everywhere", WebSocket periodic re-validation, `room_members_by_room`/`rooms_by_user`
+consistency, Cassandra replication factor) are now **Decision** notes in §4, §5 (write path), §7,
+§8, and §9 respectively. Several are explicitly-placeholder defaults rather than final answers
+(flagged as such inline) — add new items here as they come up, don't treat this section staying
+empty as "nothing left to decide."

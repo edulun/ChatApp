@@ -89,10 +89,10 @@ Presence and typing state are ephemeral and live in Redis rather than Cassandra:
 
 ## 8. Open questions
 
-- **Delivery guarantee**: is at-least-once (with client-side dedup by message ID) acceptable, or
-  does v1 need stronger ordering/exactly-once semantics per room?
-- **Multi-instance routing**: how does a service instance deliver a message to a user connected
-  to a *different* instance? (Redis pub/sub fan-out vs. a dedicated routing table.)
+- **Delivery guarantee** — resolved: at-least-once with client-side dedup by message ID. See
+  [`ChatApp-Service/DESIGN.md` §5](ChatApp-Service/DESIGN.md#5-message-write-path).
+- **Multi-instance routing** — resolved: Redis pub/sub, one channel per service instance. See
+  [`ChatApp-Service/DESIGN.md` §6](ChatApp-Service/DESIGN.md#6-presence--typing-redis).
 - **Auth**: OAuth via Google for v1 (native account creation planned later). See
   [`ChatApp-Service/DESIGN.md` §8](ChatApp-Service/DESIGN.md#8-auth) for the identity model and
   session flow.
