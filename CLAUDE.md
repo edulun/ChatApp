@@ -34,13 +34,15 @@ section that reflects real undecided points, not resolved ones. Root: `DESIGN.md
 
 - **`ChatApp-Service`**: real Spring Boot scaffold exists (builds and runs), but no
   controllers/handlers/entities have been implemented yet beyond the generated application class.
-- **`ChatApp-Client`**: a bare `package.json` only (Nx + Vite + Vitest + ESLint + Prettier +
-  TypeScript declared as devDependencies, `workspaces: ["packages/*"]`). No `nx.json`, no
-  `packages/`, no `scripts` defined, no source code — the Nx workspace itself hasn't been
-  generated yet. Don't assume any client build/lint/test command works until this scaffold exists.
+- **`ChatApp-Client`**: real Vite + React + TypeScript scaffold (plain, no Nx — an earlier bare
+  `package.json` had leftover Nx tooling from an unrelated project; replaced). Redux Toolkit store
+  wired with RTK Query and a custom WebSocket middleware; contracts codegen works
+  (`npm run codegen`). `npm run build`/`dev`/`lint` all verified. No real UI yet (`App.tsx` is a
+  minimal shell) and no Google sign-in integration (needs a real OAuth client ID that doesn't
+  exist yet). See `ChatApp-Client/DESIGN.md` Status for the full list of what isn't done yet.
 - **`ChatApp-Contracts`**: schema files exist and are real (JSON Schema for REST/WebSocket,
-  Protobuf for the Kafka-internal event) — see layout below — but no codegen tooling is wired up
-  yet on either consuming side.
+  Protobuf for the Kafka-internal event) — see layout below. `ChatApp-Client`'s codegen consumes
+  them; `ChatApp-Service` doesn't generate Java types from them yet.
 - **`ChatApp-Migrations`**: working, containerized, and wired into local dev — `docker compose up
   -d` from `ChatApp-Service` alone builds and runs it automatically (after `cassandra-init`,
   before `ChatApp-Service` would connect), applying `V1__initial_schema.cql`. Verified from a
@@ -75,11 +77,23 @@ for local dev (`spring.profiles.default: local`). Staging/prod profiles (`applic
 Health check (once running): `GET /actuator/health` — `application.yml` restricts exposed
 endpoints to `health` only, and `show-details` is only enabled on the `local` profile.
 
-### `ChatApp-Client`
+### `ChatApp-Client` (Vite + React + TypeScript, npm)
 
-No scripts are defined yet (`package.json` has `"scripts": {}` and no Nx workspace has been
-generated). Don't invent build/lint/test commands here — generate the workspace first if asked to
-scaffold it, following the stack decisions in `ChatApp-Client/DESIGN.md` §2.
+```
+cd ChatApp-Client
+npm install
+npm run codegen   # generates src/generated/ from ChatApp-Contracts — run this before dev/build
+                   # if ChatApp-Contracts schemas changed, or on a fresh checkout (gitignored)
+npm run dev       # dev server, http://localhost:5173
+npm run build     # tsc -b && vite build
+npm run lint      # oxlint
+```
+
+No test runner is set up yet (not in `ChatApp-Client/DESIGN.md`'s stated tech stack — don't add
+one unprompted). `npm run codegen` invokes `scripts/codegen.mjs` directly rather than the
+`json2ts` CLI's glob mode — that mode resolves every matched file's `$ref` against one shared
+base directory instead of each file's own, which breaks `rest/`/`websocket/` schemas that
+reference `../domain/*.schema.json`.
 
 ### `ChatApp-Contracts`
 

@@ -5,7 +5,14 @@ See the [root system design](../DESIGN.md) for how this module fits with `ChatAp
 
 ## Status
 
-Design phase. No implementation yet.
+Scaffolded: Vite + React + TypeScript, Redux Toolkit store wired with RTK Query (`api/`) and the
+WebSocket middleware (`ws/`), plus working codegen from `ChatApp-Contracts` (`npm run codegen`,
+`src/generated/`, gitignored — see `ChatApp-Contracts/DESIGN.md` §6). `npm run build`, `npm run
+dev`, and `npm run lint` all verified working. `App.tsx` is a minimal shell (renders, no console
+errors) — no real UI yet, and no Google Identity Services integration (needs a real registered
+OAuth client ID that doesn't exist yet, so it's stubbed rather than half-wired to something
+untestable). The reconnect/catch-up REST orchestration described in §5 also isn't implemented yet,
+only flagged inline in `ws/socketMiddleware.ts`.
 
 ## 1. Responsibilities
 
@@ -92,17 +99,29 @@ ID per room. On reconnect, before resuming live delivery, it calls the REST hist
 live WebSocket updates. This keeps catch-up logic entirely client-side and REST-based, rather
 than needing the WebSocket protocol itself to support resume/replay.
 
-## 6. Directory layout (proposed)
+## 6. Directory layout (implemented)
 
 ```
 ChatApp-Client/
   src/
-    api/            # RTK Query slices (rooms, messages, auth)
-    ws/             # WebSocket middleware + connection lifecycle
-    features/       # auth, presence, typing slices
-    components/     # UI
-    generated/      # types generated from ChatApp-Contracts schemas — not hand-edited
+    api/            # RTK Query endpoints: baseApi (shared config), authApi, roomsApi, messagesApi
+    ws/             # socketMiddleware (connection lifecycle) + outbound action creators
+    features/       # auth, presence, typing, messages slices
+    generated/      # types generated from ChatApp-Contracts schemas (`npm run codegen`) —
+                     # not hand-edited, not committed (gitignored)
+    store.ts        # configureStore + RootState/AppDispatch
+    hooks.ts         # typed useAppDispatch/useAppSelector
+    App.tsx, main.tsx
+  scripts/
+    codegen.mjs     # compiles ChatApp-Contracts schemas file-by-file, not via json2ts's CLI glob
+                     # mode — that mode resolves every file's $ref against one shared base
+                     # directory instead of each file's own, which breaks rest/ and websocket/
+                     # schemas referencing ../domain/
 ```
+
+`components/` from the original proposed layout doesn't exist yet — `App.tsx` currently holds a
+few small components (`SignedOutView`, `RoomList`, `SignedInView`) inline since there's not enough
+UI yet to justify splitting them out. Split into `components/` once real UI work starts.
 
 ## 7. Open questions
 
