@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AuthEvent",
+  "description": "client → server. Must be the first frame sent after the WebSocket connects — carries the bearer token issued by POST /auth/google. The connection is held unauthenticated (no other message types accepted) until this validates; see ChatApp-Service/DESIGN.md §3.1 and §8, ChatApp-Client/DESIGN.md §3.",
+  "type": "object",
+  "properties": {
+    "type": { "const": "auth" },
+    "token": { "type": "string" }
+  },
+  "required": ["type", "token"],
+  "additionalProperties": false
+}

@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AuthGoogleResponse",
+  "description": "POST /auth/google response body. `token` is the bearer session credential (opaque, Redis-backed — see ChatApp-Service/DESIGN.md §8) the client must attach as `Authorization: Bearer <token>` on REST calls and send as the first WebSocket frame (see websocket/auth.schema.json) — see ChatApp-Client/DESIGN.md §3.",
+  "type": "object",
+  "properties": {
+    "user": { "$ref": "../domain/user.schema.json" },
+    "token": { "type": "string" }
+  },
+  "required": ["user", "token"],
+  "additionalProperties": false
+}

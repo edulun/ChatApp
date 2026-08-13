@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "MessageReceiveEvent",
+  "description": "server → client. Delivers a message from another participant (or acks the sender's own send).",
+  "type": "object",
+  "properties": {
+    "type": { "const": "message.receive" },
+    "message": { "$ref": "../domain/message.schema.json" }
+  },
+  "required": ["type", "message"],
+  "additionalProperties": false
+}

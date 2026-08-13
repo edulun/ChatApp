@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "User",
+  "description": "Public-facing user profile, as seen by other users. Private identity data (email, OAuth provider linkage) lives server-side only in the user_identities table and is never part of this shape — see ChatApp-Service/DESIGN.md §8.",
+  "type": "object",
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "displayName": { "type": "string", "minLength": 1 },
+    "createdAt": { "type": "string", "format": "date-time" }
+  },
+  "required": ["id", "displayName", "createdAt"],
+  "additionalProperties": false
+}

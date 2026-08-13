@@ -1,0 +1,3 @@
+# Local, per-developer Claude Code settings — never shared/committed.
+.claude/settings.local.json
+**/.claude/settings.local.json

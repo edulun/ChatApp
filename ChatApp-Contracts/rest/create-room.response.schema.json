@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CreateRoomResponse",
+  "description": "POST /rooms response body.",
+  "type": "object",
+  "properties": {
+    "room": { "$ref": "../domain/room.schema.json" }
+  },
+  "required": ["room"],
+  "additionalProperties": false
+}

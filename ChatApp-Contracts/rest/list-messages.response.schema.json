@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ListMessagesResponse",
+  "description": "Response body shared by both GET /rooms/{id}/messages?before= (backward pagination) and ?after= (reconnect catch-up) — see ChatApp-Service/DESIGN.md §3.2.",
+  "type": "object",
+  "properties": {
+    "messages": {
+      "type": "array",
+      "items": { "$ref": "../domain/message.schema.json" }
+    },
+    "hasMore": {
+      "type": "boolean",
+      "description": "Whether more messages exist beyond this page in the requested direction."
+    }
+  },
+  "required": ["messages", "hasMore"],
+  "additionalProperties": false
+}

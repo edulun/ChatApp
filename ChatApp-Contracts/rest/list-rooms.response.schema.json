@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ListRoomsResponse",
+  "description": "GET /rooms response body.",
+  "type": "object",
+  "properties": {
+    "rooms": {
+      "type": "array",
+      "items": { "$ref": "../domain/room.schema.json" }
+    }
+  },
+  "required": ["rooms"],
+  "additionalProperties": false
+}

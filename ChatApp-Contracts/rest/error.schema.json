@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ErrorResponse",
+  "description": "Common error envelope shared by every REST endpoint in this module. Not previously specified in the design docs — added here so no endpoint is left without a defined error shape.",
+  "type": "object",
+  "properties": {
+    "error": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "Stable, machine-readable error code, e.g. 'room_not_found'."
+        },
+        "message": {
+          "type": "string",
+          "description": "Human-readable description. Not for programmatic matching — use code instead."
+        }
+      },
+      "required": ["code", "message"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["error"],
+  "additionalProperties": false
+}

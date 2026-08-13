@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AuthGoogleRequest",
+  "description": "POST /auth/google request body — see ChatApp-Service/DESIGN.md §8.",
+  "type": "object",
+  "properties": {
+    "idToken": {
+      "type": "string",
+      "description": "Google-issued OIDC ID token obtained client-side via Google Identity Services."
+    }
+  },
+  "required": ["idToken"],
+  "additionalProperties": false
+}

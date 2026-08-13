@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package chatapp.contracts.kafka;
+
+import "google/protobuf/timestamp.proto";
+
+option java_package = "dev.chatapp.contracts.kafka";
+option java_multiple_files = true;
+
+// Value schema for the chat.messages topic (ChatApp-Service/DESIGN.md §5).
+// The Kafka message key is the room_id string, set by the producer at publish
+// time to preserve per-room ordering — it is not repeated in this value.
+message ChatMessageEvent {
+  string id = 1;          // client-generated at send time; doubles as the Postgres dedup key
+  string room_id = 2;
+  string sender_id = 3;
+  string body = 4;
+  google.protobuf.Timestamp created_at = 5;
+}

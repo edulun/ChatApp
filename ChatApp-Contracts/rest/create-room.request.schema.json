@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CreateRoomRequest",
+  "description": "POST /rooms request body.",
+  "type": "object",
+  "properties": {
+    "type": { "type": "string", "enum": ["direct", "group"] },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Required when type is 'group'. Ignored when type is 'direct'."
+    },
+    "memberIds": {
+      "type": "array",
+      "items": { "type": "string", "format": "uuid" },
+      "minItems": 1,
+      "description": "Other members to add at creation time. For 'direct', exactly one id is expected."
+    }
+  },
+  "required": ["type", "memberIds"],
+  "additionalProperties": false
+}

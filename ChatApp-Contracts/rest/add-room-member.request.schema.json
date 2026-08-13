@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AddRoomMemberRequest",
+  "description": "POST /rooms/{id}/members request body.",
+  "type": "object",
+  "properties": {
+    "userId": { "type": "string", "format": "uuid" }
+  },
+  "required": ["userId"],
+  "additionalProperties": false
+}

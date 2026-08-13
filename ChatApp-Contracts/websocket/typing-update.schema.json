@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "TypingUpdateEvent",
+  "description": "server → client. Broadcasts a peer's typing state in a room.",
+  "type": "object",
+  "properties": {
+    "type": { "const": "typing.update" },
+    "roomId": { "type": "string", "format": "uuid" },
+    "userId": { "type": "string", "format": "uuid" },
+    "isTyping": { "type": "boolean" }
+  },
+  "required": ["type", "roomId", "userId", "isTyping"],
+  "additionalProperties": false
+}

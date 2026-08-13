@@ -1,0 +1,20 @@
+# Production — same shape as application-staging.yml, and for the same
+# reason: no spring.datasource / data.redis / kafka properties defined here,
+# relying entirely on Spring Boot's standard relaxed-binding env vars so a
+# missing one fails startup cleanly instead of resolving to a literal
+# "${VAR}" string. See application-staging.yml for the required env var list
+# and the reasoning.
+#
+# Deliberately near-identical to staging today: no prod-specific tuning
+# (connection pool sizing, log levels, etc.) has been decided yet, so this
+# isn't duplicated for its own sake — it's a separate file because staging
+# and prod will predictably diverge once real deployment concerns (secrets
+# source, scaling, observability) are decided, and it's better for that
+# split to already exist than to retrofit it later.
+#
+# Activate with SPRING_PROFILES_ACTIVE=prod.
+
+management:
+  endpoint:
+    health:
+      show-details: never

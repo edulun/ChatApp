@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Room",
+  "description": "A conversation, either a 1:1 direct message or a group chat. Direct rooms are modeled as a 2-member room rather than a separate type — see ChatApp-Service/DESIGN.md §4.",
+  "type": "object",
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "type": { "type": "string", "enum": ["direct", "group"] },
+    "name": {
+      "type": ["string", "null"],
+      "description": "Required for group rooms. Null for direct rooms — the client derives a display name from the other member's User.displayName."
+    },
+    "createdAt": { "type": "string", "format": "date-time" }
+  },
+  "required": ["id", "type", "name", "createdAt"],
+  "additionalProperties": false
+}
