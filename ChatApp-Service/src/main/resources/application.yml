@@ -5,7 +5,10 @@ spring:
     default: local # no SPRING_PROFILES_ACTIVE needed for local dev; staging/prod always set it explicitly
 
   cassandra:
-    schema-action: none # never auto-manage schema outside local (was jpa.ddl-auto=validate's intent)
+    # Never auto-manage schema — local, staging, and prod alike. ChatApp-Migrations owns schema
+    # (docker-compose.yml runs it locally; staging/prod run it as a deploy step) so this service
+    # never has to. Was jpa.ddl-auto=validate's intent under Postgres.
+    schema-action: none
 
 server:
   port: ${SERVER_PORT:8080}

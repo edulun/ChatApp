@@ -67,9 +67,10 @@ Indicative schema — not final. Cassandra has no joins and no secondary lookups
 own partition/clustering keys, so the model is **one denormalized table per query pattern**
 rather than a normalized relational schema. **Schema is applied via
 [`ChatApp-Migrations`](../ChatApp-Migrations/DESIGN.md), not by this service** —
-`spring.cassandra.schema-action` here is `create_if_not_exists` locally (convenience only) and
-`none` in staging/prod, deliberately, since running schema changes from every app instance on
-boot risks concurrent-DDL schema disagreement (`ChatApp-Migrations/DESIGN.md` §1). The table set
+`spring.cassandra.schema-action` is `none` everywhere, local included, deliberately, since running
+schema changes from every app instance on boot risks concurrent-DDL schema disagreement
+(`ChatApp-Migrations/DESIGN.md` §1). Locally, `ChatApp-Service/docker-compose.yml` runs
+`ChatApp-Migrations` automatically before you'd ever start this service against it. The table set
 below is mirrored in `ChatApp-Migrations/migrations/V1__initial_schema.cql` — keep both in sync:
 
 ```

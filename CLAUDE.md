@@ -33,9 +33,12 @@ section that reflects real undecided points, not resolved ones. Root: `DESIGN.md
 - **`ChatApp-Contracts`**: schema files exist and are real (JSON Schema for REST/WebSocket,
   Protobuf for the Kafka-internal event) — see layout below — but no codegen tooling is wired up
   yet on either consuming side.
-- **`ChatApp-Migrations`**: working and tested locally (`docker compose up -d` from
-  `ChatApp-Service` + `./mvnw compile exec:java` from here applies `V1__initial_schema.cql`
-  cleanly, confirmed idempotent on rerun). No containerized/CI packaging yet.
+- **`ChatApp-Migrations`**: working, containerized, and wired into local dev — `docker compose up
+  -d` from `ChatApp-Service` alone builds and runs it automatically (after `cassandra-init`,
+  before `ChatApp-Service` would connect), applying `V1__initial_schema.cql`. Verified from a
+  fully cold start end-to-end, including `ChatApp-Service` starting cleanly against the result
+  with `schema-action: none`. No CI/deploy pipeline actually invokes it for staging/prod yet —
+  that's still manual (see `ChatApp-Migrations/DESIGN.md` §5).
 
 ## Commands
 
@@ -46,7 +49,7 @@ host against them:
 
 ```
 cd ChatApp-Service
-docker compose up -d          # starts cassandra (+ a one-shot keyspace-init), redis, kafka
+docker compose up -d          # cassandra (+ keyspace-init + migrations, one-shot each), redis, kafka
 ./mvnw spring-boot:run         # runs the service (mvnw.cmd on Windows cmd/PowerShell)
 ```
 
@@ -80,18 +83,24 @@ time — schemas here are never hand-copied into either consuming module.
 ### `ChatApp-Migrations` (plain Java 21, Maven — no Spring)
 
 Applies Cassandra schema migrations. Run once per deploy, not embedded in `ChatApp-Service` —
-see `ChatApp-Migrations/DESIGN.md` §1 for why. Against the standard local stack:
+see `ChatApp-Migrations/DESIGN.md` §1 for why. **Runs automatically** as part of
+`docker compose up -d` from `ChatApp-Service` (its `migrations` service, built from
+`ChatApp-Migrations/Dockerfile`) — nothing to do here for ordinary local dev. To iterate on a
+migration file without a Docker rebuild each time, or to run manually against a non-local
+cluster:
 
 ```
-cd ChatApp-Service && docker compose up -d   # cassandra (+ keyspace init), redis, kafka
-cd ../ChatApp-Migrations && ./mvnw compile exec:java
+cd ChatApp-Migrations
+CASSANDRA_HOST=localhost CASSANDRA_PORT=9042 CASSANDRA_DC=datacenter1 CASSANDRA_KEYSPACE=chatapp \
+  ./mvnw compile exec:java
 ```
 
 Reads `.cql` files from `migrations/` (not `src/main/resources/` — filesystem, not classpath, so
-the same tool works unpackaged or from a future jar without a resource-scanning special case).
-`CASSANDRA_HOST`/`PORT`/`DC`/`KEYSPACE` env vars, same names/defaults as `ChatApp-Service`'s
-`application-local.yml`. Rerunning is a no-op once everything's applied — tracked in a
-`schema_migrations` table it creates on first run.
+the same tool works unpackaged, via `mvnw exec:java`, or from the packaged jar/container without a
+resource-scanning special case). Rerunning is a no-op once everything's applied — tracked in a
+`schema_migrations` table it creates on first run. Note: a new/changed migration file isn't
+picked up by an already-running compose stack automatically — rerun with `--build migrations`, or
+use `exec:java` directly (see `ChatApp-Migrations/.claude/agents/migrations-dev.md`).
 
 ## Architecture
 

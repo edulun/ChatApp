@@ -15,16 +15,18 @@ RUN ./mvnw dependency:go-offline -B
 
 COPY src/ src/
 RUN ./mvnw package -B -DskipTests && \
-    mv target/chatapp-service.jar target/app.jar
+    mv target/chatapp-migrations.jar target/app.jar
 
 # --- Runtime stage ---
 FROM eclipse-temurin:21-jre-jammy AS runtime
 WORKDIR /app
 
-RUN useradd --system --create-home --shell /usr/sbin/nologin chatapp
-USER chatapp
+RUN useradd --system --create-home --shell /usr/sbin/nologin migrations
+USER migrations
 
 COPY --from=build /app/target/app.jar app.jar
+# Migrate reads migrations/ off the filesystem relative to the working directory (not the
+# classpath — see DESIGN.md §2), so it has to be copied in alongside the jar, not bundled into it.
+COPY migrations/ migrations/
 
-EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "app.jar"]

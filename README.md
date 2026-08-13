@@ -40,17 +40,14 @@ module-specific detail.
 
 ```
 cd ChatApp-Service
-docker compose up -d      # local Cassandra (+ keyspace init), Redis, Kafka
+docker compose up -d      # local Cassandra + schema migrations (both automatic), Redis, Kafka
 ./mvnw spring-boot:run
 ```
 
-Apply the Cassandra schema before (or any time after) starting the service — see
-[`ChatApp-Migrations/DESIGN.md`](ChatApp-Migrations/DESIGN.md):
-
-```
-cd ChatApp-Migrations
-./mvnw compile exec:java
-```
+`docker compose up -d` builds and runs [`ChatApp-Migrations`](ChatApp-Migrations) automatically
+once Cassandra's ready — no separate step needed for local dev. See
+[`ChatApp-Migrations/DESIGN.md`](ChatApp-Migrations/DESIGN.md) for running it manually (e.g.
+against a non-local cluster) or iterating on a new migration.
 
 `ChatApp-Client` is design-only so far — see [`ChatApp-Client/DESIGN.md`](ChatApp-Client/DESIGN.md).
 

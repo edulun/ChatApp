@@ -1,7 +1,8 @@
 # Local dev — matches docker-compose.yml's default ports/keyspace exactly.
 # Every value has a fallback default, so `./mvnw spring-boot:run` works with
-# zero configuration once `docker compose up -d` is running (cassandra-init
-# creates the `chatapp` keyspace itself — see docker-compose.yml).
+# zero configuration once `docker compose up -d` is running (its cassandra-init and migrations
+# services create the keyspace and apply schema respectively — see docker-compose.yml). No
+# schema-action override here: base application.yml's `none` applies locally too now.
 
 spring:
   cassandra:
@@ -10,7 +11,6 @@ spring:
     port: ${CASSANDRA_PORT:9042}
     local-datacenter: ${CASSANDRA_DC:datacenter1} # default DC name for the official single-node image
     keyspace-name: ${CASSANDRA_KEYSPACE:chatapp}
-    schema-action: create_if_not_exists
 
   data:
     redis:

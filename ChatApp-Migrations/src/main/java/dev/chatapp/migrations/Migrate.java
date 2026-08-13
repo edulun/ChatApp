@@ -1,6 +1,10 @@
 package dev.chatapp.migrations;
 
+import com.datastax.oss.driver.api.core.AllNodesFailedException;
 import com.datastax.oss.driver.api.core.CqlSession;
+import com.datastax.oss.driver.api.core.DriverTimeoutException;
+import com.datastax.oss.driver.api.core.config.DefaultDriverOption;
+import com.datastax.oss.driver.api.core.config.DriverConfigLoader;
 import com.datastax.oss.driver.api.core.cql.ResultSet;
 import com.datastax.oss.driver.api.core.cql.Row;
 
@@ -8,6 +12,7 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -27,7 +32,16 @@ public final class Migrate {
 
     private static final Pattern FILENAME = Pattern.compile("^V(\\d+)__(.+)\\.cql$");
 
-    public static void main(String[] args) throws IOException {
+    // A node passing its Docker healthcheck (a plain connect) doesn't guarantee it's warmed up
+    // enough for DDL to complete within the driver's normal request timeout — observed this
+    // directly: schema_migrations' CREATE TABLE timed out at the 2s default immediately after
+    // cassandra-init succeeded. Both a longer timeout and a few retries at connect time, since
+    // a freshly-started single node can also drop the very first connection attempt.
+    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(30);
+    private static final int CONNECT_ATTEMPTS = 5;
+    private static final Duration RETRY_DELAY = Duration.ofSeconds(5);
+
+    public static void main(String[] args) throws IOException, InterruptedException {
         String host = env("CASSANDRA_HOST", "127.0.0.1");
         int port = Integer.parseInt(env("CASSANDRA_PORT", "9042"));
         String dc = env("CASSANDRA_DC", "datacenter1");
@@ -36,33 +50,48 @@ public final class Migrate {
 
         System.out.printf("Connecting to %s:%d (dc=%s, keyspace=%s)%n", host, port, dc, keyspace);
 
-        try (CqlSession session = CqlSession.builder()
-                .addContactPoint(new InetSocketAddress(host, port))
-                .withLocalDatacenter(dc)
-                .withKeyspace(keyspace)
-                .build()) {
+        var configLoader = DriverConfigLoader.programmaticBuilder()
+                .withDuration(DefaultDriverOption.REQUEST_TIMEOUT, REQUEST_TIMEOUT)
+                .build();
 
-            session.execute("""
-                CREATE TABLE IF NOT EXISTS schema_migrations (
-                    version text PRIMARY KEY,
-                    description text,
-                    applied_at timestamp
-                )
-                """);
+        for (int attempt = 1; ; attempt++) {
+            try (CqlSession session = CqlSession.builder()
+                    .addContactPoint(new InetSocketAddress(host, port))
+                    .withLocalDatacenter(dc)
+                    .withKeyspace(keyspace)
+                    .withConfigLoader(configLoader)
+                    .build()) {
 
-            Set<String> applied = appliedVersions(session);
-            List<Path> pending = pendingMigrations(migrationsDir, applied);
+                session.execute("""
+                    CREATE TABLE IF NOT EXISTS schema_migrations (
+                        version text PRIMARY KEY,
+                        description text,
+                        applied_at timestamp
+                    )
+                    """);
 
-            if (pending.isEmpty()) {
-                System.out.println("No pending migrations.");
+                Set<String> applied = appliedVersions(session);
+                List<Path> pending = pendingMigrations(migrationsDir, applied);
+
+                if (pending.isEmpty()) {
+                    System.out.println("No pending migrations.");
+                    return;
+                }
+
+                for (Path file : pending) {
+                    apply(session, file);
+                }
+
+                System.out.println("Applied " + pending.size() + " migration(s).");
                 return;
+            } catch (AllNodesFailedException | DriverTimeoutException e) {
+                if (attempt >= CONNECT_ATTEMPTS) {
+                    throw e;
+                }
+                System.out.printf("Attempt %d/%d failed (%s), retrying in %ds...%n",
+                        attempt, CONNECT_ATTEMPTS, e.getClass().getSimpleName(), RETRY_DELAY.toSeconds());
+                Thread.sleep(RETRY_DELAY.toMillis());
             }
-
-            for (Path file : pending) {
-                apply(session, file);
-            }
-
-            System.out.println("Applied " + pending.size() + " migration(s).");
         }
     }
 

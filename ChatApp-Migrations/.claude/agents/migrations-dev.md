@@ -24,7 +24,18 @@ Ground rules specific to this module:
 - **Don't touch keyspace creation or replication settings** — out of scope per `DESIGN.md` §1;
   that's `ChatApp-Service/docker-compose.yml`'s `cassandra-init` locally, and unresolved for
   staging/prod (`ChatApp-Service/DESIGN.md` §10).
-- To test a migration: `docker compose up -d` from `ChatApp-Service` (brings up Cassandra +
-  keyspace-init), then `./mvnw compile exec:java` from here. Verify with `docker compose exec
-  cassandra cqlsh -e "USE chatapp; DESCRIBE TABLES;"` from `ChatApp-Service`, and confirm rerunning
-  reports "No pending migrations." before considering it done.
+- **A new migration file isn't picked up automatically by a running stack** — `docker
+  compose up -d`'s `migrations` service only runs once, right after `cassandra-init`, when the
+  stack starts. After adding/editing a migration file, rerun it explicitly: `docker compose up -d
+  --build migrations` from `ChatApp-Service` (rebuilds the image so the new file is inside it),
+  or `./mvnw compile exec:java` from here for a faster local-only iteration loop that skips the
+  Docker rebuild.
+- To test from scratch: `docker compose down -v && docker compose up -d` from `ChatApp-Service`
+  (full cold start — recreates the keyspace and reruns every migration). Verify with `docker
+  compose exec cassandra cqlsh -e "USE chatapp; DESCRIBE TABLES;"`, and confirm a second run
+  (`./mvnw compile exec:java` from here) reports "No pending migrations." before considering it
+  done.
+- If you see a `DriverTimeoutException` on the very first statement right after a fresh
+  `cassandra-init`, that's a known Cassandra-just-passed-its-healthcheck-but-isn't-fully-warm
+  timing issue already handled by `Migrate`'s retry/longer-timeout logic (`DESIGN.md` §2) — don't
+  "fix" it by removing that logic.

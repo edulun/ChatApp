@@ -26,17 +26,18 @@ Ground rules specific to this module:
   `rooms_by_user` are two copies of the same membership fact for two different queries — write
   both on join/leave, there's no cross-table transaction to keep them atomic.
 - **Don't add/change tables from here.** Schema DDL lives in `ChatApp-Migrations`, applied as a
-  separate deploy step — `schema-action` here is `create_if_not_exists` locally only, `none` in
-  staging/prod (DESIGN.md §4). If a feature needs a schema change, that's a new migration file in
-  `ChatApp-Migrations`, kept in sync with this doc's §4 — not something this service manages.
+  separate deploy step — `schema-action` is `none` everywhere, local included (DESIGN.md §4). If
+  a feature needs a schema change, that's a new migration file in `ChatApp-Migrations`, kept in
+  sync with this doc's §4 — not something this service manages.
 - **Sessions are Redis-backed opaque tokens, not JWTs** (DESIGN.md §8) — deliberately, for cheap
   revocation. Don't reach for a self-contained JWT as a shortcut.
 - **Cross-instance delivery** goes through per-instance `route:{instance_id}` Redis pub/sub
   channels, looked up via the `presence:{user_id}` key (DESIGN.md §6) — not a per-user channel.
-- Local infra (Cassandra/Redis/Kafka) runs via `docker compose up -d` in this directory (Cassandra
-  takes 30s+ to become healthy, and a one-shot `cassandra-init` service creates the `chatapp`
-  keyspace once it is); the service itself runs on the host against it (`./mvnw spring-boot:run`).
-  `application-local.yml` already matches the compose defaults — no env vars needed for local dev.
+- Local infra (Cassandra/Redis/Kafka) runs via `docker compose up -d` in this directory. Cassandra
+  takes 30s+ to become healthy; after that, `cassandra-init` creates the `chatapp` keyspace and
+  `migrations` (the `ChatApp-Migrations` image) applies schema, both one-shot. The service itself
+  runs on the host against it (`./mvnw spring-boot:run`) — `application-local.yml` already
+  matches the compose defaults, no env vars needed for local dev.
 - Run `./mvnw test` before considering a task done.
 
 When a task is genuinely cross-module (e.g. a new WebSocket event type), implement only the

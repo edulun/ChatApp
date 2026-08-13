@@ -1,4 +1,7 @@
-# Local dev dependencies for ChatApp-Service (Cassandra, Redis, Kafka).
+# Local dev dependencies for ChatApp-Service (Cassandra, Redis, Kafka), plus a one-shot run of
+# ChatApp-Migrations so local schema comes from the same source as staging/prod, not Spring
+# Data's auto-schema (see ChatApp-Service/src/main/resources/application.yml — schema-action is
+# `none` everywhere, this file is what actually creates the tables locally).
 # The service itself is expected to run on the host (via ./mvnw spring-boot:run
 # or the IDE), connecting to these over the published ports — it is not a
 # service in this file. Defaults here match src/main/resources/application.yml.
@@ -34,6 +37,19 @@ services:
       cqlsh cassandra -e
       "CREATE KEYSPACE IF NOT EXISTS chatapp WITH replication =
       {'class': 'SimpleStrategy', 'replication_factor': 1};"
+    restart: "no"
+
+  # Applies ChatApp-Migrations/migrations/*.cql once the keyspace exists, then exits — the same
+  # tool (and the same schema) staging/prod would run before deploying a new service version.
+  # See ../ChatApp-Migrations/DESIGN.md.
+  migrations:
+    build:
+      context: ../ChatApp-Migrations
+    depends_on:
+      cassandra-init:
+        condition: service_completed_successfully
+    environment:
+      CASSANDRA_HOST: cassandra
     restart: "no"
 
   redis:
