@@ -10,6 +10,7 @@ durability, presence, and typing indicators.
 | [`ChatApp-Service`](ChatApp-Service) | Backend (Spring Boot). Owns connection handling, auth, routing, presence, and message persistence. |
 | [`ChatApp-Client`](ChatApp-Client) | End-user client application. Connects to the service over WebSockets, renders conversations, sends/receives messages. |
 | [`ChatApp-Contracts`](ChatApp-Contracts) | Shared message/event schemas used by both client and service so the wire format has a single source of truth. |
+| [`ChatApp-Migrations`](ChatApp-Migrations) | Applies Cassandra schema migrations as a one-shot deploy step, separate from `ChatApp-Service`. |
 
 See [`DESIGN.md`](DESIGN.md) for the full system design, and each module's own `DESIGN.md` for
 module-specific detail.
@@ -39,8 +40,16 @@ module-specific detail.
 
 ```
 cd ChatApp-Service
-docker compose up -d      # local Cassandra, Redis, Kafka
+docker compose up -d      # local Cassandra (+ keyspace init), Redis, Kafka
 ./mvnw spring-boot:run
+```
+
+Apply the Cassandra schema before (or any time after) starting the service — see
+[`ChatApp-Migrations/DESIGN.md`](ChatApp-Migrations/DESIGN.md):
+
+```
+cd ChatApp-Migrations
+./mvnw compile exec:java
 ```
 
 `ChatApp-Client` is design-only so far — see [`ChatApp-Client/DESIGN.md`](ChatApp-Client/DESIGN.md).

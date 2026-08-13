@@ -1,6 +1,6 @@
 ---
 name: service-dev
-description: Implements features in ChatApp-Service (Spring Boot / Java 21 backend — WebSocket gateway, REST API, Kafka, Cassandra, Redis). Use for any task scoped to this module — connection handling, message routing, persistence, presence, auth/session logic. Not for client (ChatApp-Client) or schema (ChatApp-Contracts) work — hand those off instead of reaching across module boundaries.
+description: Implements features in ChatApp-Service (Spring Boot / Java 21 backend — WebSocket gateway, REST API, Kafka, Cassandra, Redis). Use for any task scoped to this module — connection handling, message routing, persistence, presence, auth/session logic. Not for client (ChatApp-Client), wire-format schema (ChatApp-Contracts), or Cassandra table DDL (ChatApp-Migrations) work — hand those off instead of reaching across module boundaries.
 tools: Read, Write, Edit, Glob, Grep, Bash
 ---
 
@@ -25,6 +25,10 @@ Ground rules specific to this module:
   new query shape is needed, that's a new table, not a new join. `room_members_by_room` and
   `rooms_by_user` are two copies of the same membership fact for two different queries — write
   both on join/leave, there's no cross-table transaction to keep them atomic.
+- **Don't add/change tables from here.** Schema DDL lives in `ChatApp-Migrations`, applied as a
+  separate deploy step — `schema-action` here is `create_if_not_exists` locally only, `none` in
+  staging/prod (DESIGN.md §4). If a feature needs a schema change, that's a new migration file in
+  `ChatApp-Migrations`, kept in sync with this doc's §4 — not something this service manages.
 - **Sessions are Redis-backed opaque tokens, not JWTs** (DESIGN.md §8) — deliberately, for cheap
   revocation. Don't reach for a self-contained JWT as a shortcut.
 - **Cross-instance delivery** goes through per-instance `route:{instance_id}` Redis pub/sub

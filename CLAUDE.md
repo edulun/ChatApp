@@ -4,8 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repo structure
 
-This is a single monorepo (`origin` → `github.com/edulun/ChatApp`) containing three modules.
-Each *previously* lived in its own git repo (`ChatApp-Client`, `ChatApp-Service`,
+This is a single monorepo (`origin` → `github.com/edulun/ChatApp`) containing four modules.
+Three *previously* lived in their own git repo (`ChatApp-Client`, `ChatApp-Service`,
 `ChatApp-Contracts` on GitHub under `edulun/`) — those remain on GitHub as historical/frozen
 snapshots, but active development now happens here as one repo with one history:
 
@@ -14,11 +14,13 @@ snapshots, but active development now happens here as one repo with one history:
 | `ChatApp-Service` | Backend: Spring Boot, owns WebSocket + REST, persistence, presence |
 | `ChatApp-Client` | Frontend: React/TS web client (scaffold only so far — see Status) |
 | `ChatApp-Contracts` | Shared wire-format schemas consumed by both — the source of truth for the client/service boundary |
+| `ChatApp-Migrations` | Applies Cassandra schema migrations as a one-shot deploy step — deliberately separate from `ChatApp-Service` (see its `DESIGN.md` §1) |
 
 Read `DESIGN.md` at the root and inside each module before making architectural changes — these
 are living design docs (not just historical context) and each ends with an "Open questions"
 section that reflects real undecided points, not resolved ones. Root: `DESIGN.md`. Per-module:
-`ChatApp-Service/DESIGN.md`, `ChatApp-Client/DESIGN.md`, `ChatApp-Contracts/DESIGN.md`.
+`ChatApp-Service/DESIGN.md`, `ChatApp-Client/DESIGN.md`, `ChatApp-Contracts/DESIGN.md`,
+`ChatApp-Migrations/DESIGN.md`.
 
 ## Status
 
@@ -31,6 +33,9 @@ section that reflects real undecided points, not resolved ones. Root: `DESIGN.md
 - **`ChatApp-Contracts`**: schema files exist and are real (JSON Schema for REST/WebSocket,
   Protobuf for the Kafka-internal event) — see layout below — but no codegen tooling is wired up
   yet on either consuming side.
+- **`ChatApp-Migrations`**: working and tested locally (`docker compose up -d` from
+  `ChatApp-Service` + `./mvnw compile exec:java` from here applies `V1__initial_schema.cql`
+  cleanly, confirmed idempotent on rerun). No containerized/CI packaging yet.
 
 ## Commands
 
@@ -71,6 +76,22 @@ No build tooling yet. Per `ChatApp-Contracts/DESIGN.md` §6, the intended flow i
 generates TypeScript types from the JSON Schema files via `json-schema-to-typescript` at build
 time, and `ChatApp-Service` generates Java types from the JSON Schema / `.proto` files at build
 time — schemas here are never hand-copied into either consuming module.
+
+### `ChatApp-Migrations` (plain Java 21, Maven — no Spring)
+
+Applies Cassandra schema migrations. Run once per deploy, not embedded in `ChatApp-Service` —
+see `ChatApp-Migrations/DESIGN.md` §1 for why. Against the standard local stack:
+
+```
+cd ChatApp-Service && docker compose up -d   # cassandra (+ keyspace init), redis, kafka
+cd ../ChatApp-Migrations && ./mvnw compile exec:java
+```
+
+Reads `.cql` files from `migrations/` (not `src/main/resources/` — filesystem, not classpath, so
+the same tool works unpackaged or from a future jar without a resource-scanning special case).
+`CASSANDRA_HOST`/`PORT`/`DC`/`KEYSPACE` env vars, same names/defaults as `ChatApp-Service`'s
+`application-local.yml`. Rerunning is a no-op once everything's applied — tracked in a
+`schema_migrations` table it creates on first run.
 
 ## Architecture
 
@@ -160,6 +181,7 @@ Each module has its own project subagent, defined in that module's `.claude/agen
 | `client-dev` | `ChatApp-Client` | Implements client features. Never hand-writes DTOs; auth is a bearer token the client attaches itself, not a cookie. |
 | `service-dev` | `ChatApp-Service` | Implements service features. Fan-out isn't gated on Kafka/Cassandra durability; sessions are Redis-backed opaque tokens, not JWTs; data model is one denormalized table per query, not relational. |
 | `schema-reviewer` | `ChatApp-Contracts` | Read-only. Reviews schema diffs against the additive-only compatibility policy (§5 of that module's `DESIGN.md`) before merge. |
+| `migrations-dev` | `ChatApp-Migrations` | Writes/runs Cassandra migrations. Never edits an already-applied migration file; every statement must be idempotent (no DDL transactions in Cassandra). |
 
 Each is scoped to its own module's conventions and explicitly told not to reach across module
 boundaries — a cross-module task (e.g. a new WebSocket event type) should be split so each

@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>dev.chatapp</groupId>
+    <artifactId>chatapp-migrations</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <name>ChatApp-Migrations</name>
+    <description>Cassandra schema migration runner for ChatApp — run as a one-shot deploy step, not embedded in ChatApp-Service. See DESIGN.md.</description>
+
+    <properties>
+        <maven.compiler.release>21</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <!-- Matches the driver version ChatApp-Service already resolves transitively via
+             spring-boot-starter-data-cassandra — kept in lockstep deliberately. -->
+        <cassandra.driver.version>4.18.1</cassandra.driver.version>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.apache.cassandra</groupId>
+            <artifactId>java-driver-core</artifactId>
+            <version>${cassandra.driver.version}</version>
+        </dependency>
+        <!-- Binds a no-op SLF4J implementation so the driver doesn't warn about a missing one.
+             This is a CLI tool; System.out is the output, not a log framework. Pinned to the
+             1.7.x line (not 2.x) to match the slf4j-api version java-driver-core actually pulls
+             transitively (1.7.26) — a 2.x slf4j-nop doesn't satisfy the old StaticLoggerBinder
+             lookup a 1.7.x slf4j-api performs. -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-nop</artifactId>
+            <version>1.7.36</version>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <finalName>chatapp-migrations</finalName>
+        <plugins>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.1.0</version>
+                <configuration>
+                    <mainClass>dev.chatapp.migrations.Migrate</mainClass>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

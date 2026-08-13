@@ -9,6 +9,7 @@ describes the intended system at the whole-repo level. Each module has (or will 
 - [`ChatApp-Service/DESIGN.md`](ChatApp-Service/DESIGN.md) — backend service
 - [`ChatApp-Client/DESIGN.md`](ChatApp-Client/DESIGN.md) — client application
 - [`ChatApp-Contracts/DESIGN.md`](ChatApp-Contracts/DESIGN.md) — shared API/message contracts
+- [`ChatApp-Migrations/DESIGN.md`](ChatApp-Migrations/DESIGN.md) — Cassandra schema migrations
 
 ## 1. Goal
 
@@ -22,6 +23,7 @@ durability, presence, and typing indicators.
 | `ChatApp-Client` | End-user client application. Connects to the service over WebSockets, renders conversations, sends/receives messages. |
 | `ChatApp-Service` | Backend. Owns connection handling, auth, routing, presence, and message persistence. |
 | `ChatApp-Contracts` | Shared definitions (message/event schemas, DTOs) used by both client and service so the wire format has a single source of truth. |
+| `ChatApp-Migrations` | Applies Cassandra schema migrations as a one-shot deploy step — deliberately not part of `ChatApp-Service` (see its `DESIGN.md` §1). |
 
 ## 3. v1 feature scope
 
