@@ -1,11 +1,32 @@
 import { useAppDispatch, useAppSelector } from './hooks';
-import { signedOut } from './features/auth/authSlice';
+import { signedIn, signedOut } from './features/auth/authSlice';
 import { useListRoomsQuery } from './api/roomsApi';
+import { MOCK_CURRENT_USER, MOCK_TOKEN } from './mocks/fixtures';
 // Registers roomsApi's endpoints on the shared api slice (baseApi.ts) — importing it is enough,
 // see the note in store.ts. authApi/messagesApi aren't used by this minimal shell yet, but follow
 // the same pattern when a component needs them.
 
+// VITE_USE_MOCKS=true (`npm run dev:mock`) — see src/mocks/. Real sign-in has no OAuth client ID
+// yet (below), so this is the only way to reach SignedInView without ChatApp-Service.
+const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === 'true';
+
 function SignedOutView() {
+  const dispatch = useAppDispatch();
+
+  if (USE_MOCKS) {
+    return (
+      <main>
+        <h1>ChatApp</h1>
+        <button
+          type="button"
+          onClick={() => dispatch(signedIn({ user: MOCK_CURRENT_USER, token: MOCK_TOKEN }))}
+        >
+          Sign in (mock)
+        </button>
+      </main>
+    );
+  }
+
   return (
     <main>
       <h1>ChatApp</h1>

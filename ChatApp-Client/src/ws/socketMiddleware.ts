@@ -5,6 +5,7 @@ import { presenceUpdated } from '../features/presence/presenceSlice';
 import { typingUpdated } from '../features/typing/typingSlice';
 import { typingStartRequested, typingStopRequested } from './actions';
 import { roomsApi } from '../api/roomsApi';
+import { MockWebSocket } from '../mocks/mockSocket';
 import type { RootState, AppDispatch } from '../store';
 import type { AuthEvent } from '../generated/websocket/auth';
 import type { MessageSendEvent } from '../generated/websocket/message-send';
@@ -25,6 +26,19 @@ type InboundEvent =
 
 const WS_URL = import.meta.env.VITE_WS_URL ?? 'ws://localhost:8080/ws';
 const MAX_BACKOFF_MS = 30_000;
+// VITE_USE_MOCKS=true (`npm run dev:mock`) swaps in MockWebSocket so this middleware doesn't
+// endlessly retry a connection to a ChatApp-Service that isn't running — see src/mocks/.
+const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === 'true';
+
+// The subset of the WebSocket API this middleware actually uses — satisfied structurally by both
+// the real WebSocket and MockWebSocket, so `socket` doesn't need a cast either way.
+interface SocketLike {
+  readyState: number;
+  addEventListener(type: 'open' | 'close' | 'error', listener: () => void): void;
+  addEventListener(type: 'message', listener: (event: MessageEvent<string>) => void): void;
+  send(data: string): void;
+  close(): void;
+}
 
 // Owns the single WebSocket connection's lifecycle, per ChatApp-Client/DESIGN.md §5:
 // connects on sign-in, sends the auth frame first, maps inbound events to actions, reconnects
@@ -38,7 +52,7 @@ const MAX_BACKOFF_MS = 30_000;
 export const socketMiddleware: Middleware<Record<string, never>, RootState, AppDispatch> = (
   store,
 ) => {
-  let socket: WebSocket | null = null;
+  let socket: SocketLike | null = null;
   let reconnectAttempt = 0;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let shouldConnect = false;
@@ -61,7 +75,7 @@ export const socketMiddleware: Middleware<Record<string, never>, RootState, AppD
 
   function connect() {
     if (socket) return;
-    socket = new WebSocket(WS_URL);
+    socket = USE_MOCKS ? new MockWebSocket(WS_URL) : new WebSocket(WS_URL);
 
     socket.addEventListener('open', () => {
       reconnectAttempt = 0;
