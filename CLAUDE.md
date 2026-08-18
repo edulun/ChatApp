@@ -4,11 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Workflow
 
-**Before running `git commit` or `git push`, describe the changes and get explicit confirmation
-first — not after.** Summarize what changed and why, then wait for a go-ahead before committing;
-if already committed, before pushing. Don't treat committing/pushing as an automatic last step of
-a task just because earlier work in the same session was approved — each commit/push needs its
-own confirmation.
+**Agents may commit freely without asking first, but must never push directly to
+`origin/main`.** Work always happens on a separate branch; reaching `main` goes through pushing
+that branch and opening a PR, not a direct push to `main` and not a confirmation step before the
+push itself — the PR is the review gate. A direct push/commit to `main`, or a force-push anywhere,
+still requires explicit user confirmation first, same as any other destructive/hard-to-reverse git
+operation.
 
 ## Repo structure
 
